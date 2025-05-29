@@ -1,124 +1,93 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
-
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xffffff); // Set white background
+scene.background = new THREE.Color(0xffffff); // White background
 
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+camera.position.set(0, 5, -10); // Initial offset
 
+const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
-// // Lighting
-// const light = new THREE.HemisphereLight(0xffffff, 0x444444);
-// light.position.set(0, 20, 0);
-// scene.add(light);
-
-// const directionalLight = new THREE.DirectionalLight(0xffffff);
-// directionalLight.position.set(0, 10, 5).normalize();
-// scene.add(directionalLight);
-
 // Lights
-
 const pointLight = new THREE.PointLight(0xffffff);
 pointLight.position.set(5, 5, 5);
-
 const ambientLight = new THREE.AmbientLight(0xffffff);
 scene.add(pointLight, ambientLight);
 
-// Load cat model
+// Grid for reference
+const gridHelper = new THREE.GridHelper(200, 50, 0x888888);
+scene.add(gridHelper);
+
+// Cat model
 const loader = new GLTFLoader();
 let catModel;
+let basePosition = new THREE.Vector3(); // base position without hover
 
-loader.load(
-  'catto.glb', // adjust path if needed
-  function (gltf) {
-    catModel = gltf.scene;
-    catModel.scale.set(1.5, 1.5, 1.5);
-    catModel.position.y = -1;
-    scene.add(catModel);
-  },
-  undefined,
-  function (error) {
-    console.error('Error loading model:', error);
-  }
-);
+// loader.load(
+//   'catto.glb',
+//   function (gltf) {
+//     catModel = gltf.scene;
+//     catModel.scale.set(1.5, 1.5, 1.5);
+//     basePosition.set(0, 0, 0);
+//     catModel.position.copy(basePosition);
+//     scene.add(catModel);
+//   },
+//   undefined,
+//   function (error) {
+//     console.error('Error loading model:', error);
+//   }
+// );
 
+//loading a sphere for testing as cat model is very high def
+const sphereGeometry = new THREE.SphereGeometry(1, 32, 32);
+const sphereMaterial = new THREE.MeshStandardMaterial({ color: 0x3399ff });
+catModel = new THREE.Mesh(sphereGeometry, sphereMaterial);
+catModel.scale.set(1.5,1.5,1.5);
+scene.add(catModel);
 
-// //Adding a plane or the ground
-// const geometry = new THREE.PlaneGeometry( 10, 10 );
-// const material = new THREE.MeshBasicMaterial( {color: 0xffff00, side: THREE.DoubleSide} );
-// const plane = new THREE.Mesh( geometry, material );
-// scene.add( plane );
-
-// plane.rotateX(-Math.PI/2);
-
-
-camera.position.z = 15;
-
-
-
-// Helpers
-
-const lightHelper = new THREE.PointLightHelper(pointLight)
-const gridHelper = new THREE.GridHelper(200, 50, 0xffffff);
-scene.add( gridHelper)
-
-const controls = new OrbitControls(camera, renderer.domElement);
-
-//clock to hover the cat 
-let clock = new THREE.Clock();
-
-function hoverCharacter(model){
-  const elapsed = clock.getElapsedTime();
-
-  if (model) {
-    // Hover up and down using sine wave
-    model.position.y = Math.sin(elapsed * 2) * 0.5; // 2 is speed, 0.5 is height
-  }
-}
-
-
-//tracking keypresses
+// Track keypresses
 const keysPressed = {};
+window.addEventListener('keydown', (e) => keysPressed[e.key.toLowerCase()] = true);
+window.addEventListener('keyup', (e) => keysPressed[e.key.toLowerCase()] = false);
 
-window.addEventListener('keydown', (event) => {
-  keysPressed[event.key.toLowerCase()] = true;
-});
+// Clock
+const clock = new THREE.Clock();
 
-window.addEventListener('keyup', (event) => {
-  keysPressed[event.key.toLowerCase()] = false;
-});
-
-console.log(keysPressed);
-function moveCharacter(model,keysPressed){
-  const speed =0.085;
- if(model){
-    if(keysPressed['w']){model.position.x+=speed}
-    if(keysPressed['a']){model.position.z -=speed}
-    if(keysPressed['s']){model.position.x-=speed}
-    if(keysPressed['d']){model.position.z+=speed}
- }
+// Hover character visually
+function hoverCharacter(model, basePosition) {
+  const elapsed = clock.getElapsedTime();
+  if (model) {
+    const hoverOffset = Math.sin(elapsed * 2) * 0.5;
+    model.position.set(basePosition.x, basePosition.y + hoverOffset, basePosition.z);
+  }
 }
 
+// Move base position using WASD
+function moveCharacter(basePos) {
+  const speed = 0.0085;
+  if (keysPressed['w']) basePos.z += speed;
+  if (keysPressed['s']) basePos.z -= speed;
+  if (keysPressed['a']) basePos.x += speed;
+  if (keysPressed['d']) basePos.x -= speed;
+}
+
+// Camera follows base position
+function updateCameraFollow(basePos) {
+  const offset = new THREE.Vector3(0, 8, -15);
+  const desiredPosition = basePos.clone().add(offset);
+  camera.position.lerp(desiredPosition, 0.1);
+  camera.lookAt(basePos);
+}
+
+// Animate
 function animate() {
   requestAnimationFrame(animate);
-  catModel.rotation.y =Math.PI/2;
-
-
-  // const elapsed = clock.getElapsedTime();
-
-  // if (catModel) {
-  //   // Hover up and down using sine wave
-  //   catModel.position.y = Math.sin(elapsed * 2) * 0.5; // 2 is speed, 0.5 is height
-  // }
-
-  hoverCharacter(catModel);
-  moveCharacter(catModel,keysPressed)
-  controls.update();
+  moveCharacter(basePosition);
+  hoverCharacter(catModel, basePosition);
+  updateCameraFollow(basePosition);
   renderer.render(scene, camera);
 }
 
