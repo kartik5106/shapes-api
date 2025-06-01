@@ -1,94 +1,233 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
+// --- Scene Setup ---
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xffffff); // White background
+scene.background = new THREE.Color(0x87CEEB);
+scene.fog = new THREE.Fog(0x87CEEB, 30, 120);
 
+// --- Camera ---
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-camera.position.set(0, 5, -10); // Initial offset
+camera.position.set(0, 10, 20);
 
+// --- Renderer ---
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 
-// Lights
-const pointLight = new THREE.PointLight(0xffffff);
-pointLight.position.set(5, 5, 5);
-const ambientLight = new THREE.AmbientLight(0xffffff);
-scene.add(pointLight, ambientLight);
+// --- Lighting ---
+const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.5);
+hemisphereLight.position.set(0, 50, 0);
+scene.add(hemisphereLight);
 
-// Grid for reference
-const gridHelper = new THREE.GridHelper(200, 50, 0x888888);
-scene.add(gridHelper);
+const directionalLight = new THREE.DirectionalLight(0xffffff, 2.5);
+directionalLight.position.set(25, 40, 15);
+directionalLight.castShadow = true;
+directionalLight.shadow.mapSize.width = 2048;
+directionalLight.shadow.mapSize.height = 2048;
+directionalLight.shadow.camera.near = 0.5;
+directionalLight.shadow.camera.far = 100;
+directionalLight.shadow.camera.left = -30;
+directionalLight.shadow.camera.right = 30;
+directionalLight.shadow.camera.top = 30;
+directionalLight.shadow.camera.bottom = -30;
+directionalLight.shadow.bias = -0.0005;
+scene.add(directionalLight);
+scene.add(directionalLight.target);
 
-// Cat model
-const loader = new GLTFLoader();
-let catModel;
-let basePosition = new THREE.Vector3(); // base position without hover
+// --- Floor ---
+const floorGeometry = new THREE.PlaneGeometry(250, 250);
+const floorMaterial = new THREE.MeshStandardMaterial({
+    color: 0x999999,
+    roughness: 0.9,
+    metalness: 0.1
+});
+const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+floor.rotation.x = -Math.PI / 2;
+floor.receiveShadow = true;
+floor.position.y = 0;
+scene.add(floor);
 
-// loader.load(
-//   'catto.glb',
-//   function (gltf) {
-//     catModel = gltf.scene;
-//     catModel.scale.set(1.5, 1.5, 1.5);
-//     basePosition.set(0, 0, 0);
-//     catModel.position.copy(basePosition);
-//     scene.add(catModel);
-//   },
-//   undefined,
-//   function (error) {
-//     console.error('Error loading model:', error);
-//   }
-// );
+// --- Player Character Model ---
+let characterModel; // This will hold the loaded cat model or fallback
+const basePosition = new THREE.Vector3(); // Initialize base position, will be set by loader
 
-//loading a sphere for testing as cat model is very high def
-const sphereGeometry = new THREE.SphereGeometry(1, 32, 32);
-const sphereMaterial = new THREE.MeshStandardMaterial({ color: 0x3399ff });
-catModel = new THREE.Mesh(sphereGeometry, sphereMaterial);
-catModel.scale.set(1.5,1.5,1.5);
-scene.add(catModel);
+const playerModelLoader = new GLTFLoader();
+playerModelLoader.load(
+    'catto.glb', 
+    function (gltf) {
+        characterModel = gltf.scene;
+        characterModel.scale.set(1.5, 1.5, 1.5); 
+        basePosition.set(0, 0, 0);
+        characterModel.position.copy(basePosition);
 
-// Track keypresses
+        characterModel.traverse(function (node) {
+            if (node.isMesh) {
+                node.castShadow = true;
+                node.receiveShadow = true;
+            }
+        });
+        scene.add(characterModel);
+        console.log('Player cat model (catto.glb) loaded successfully.');
+
+        // Ensure initial position and hover are applied correctly after load
+        if (characterModel) {
+            characterModel.position.x = basePosition.x;
+            characterModel.position.z = basePosition.z;
+            // Apply hover based on the now-set basePosition.y
+            hoverCharacter(characterModel, basePosition);
+        }
+    },
+    undefined, // onProgress callback
+    function (error) {
+        console.error('Error loading player model (catto.glb):', error);
+        // Fallback: if player cat model fails, add a simple red sphere
+        const fallbackSphereRadius = 0.5;
+        const fallbackSphereScale = 1.5;
+        const fallbackGeometry = new THREE.SphereGeometry(fallbackSphereRadius, 16, 16);
+        const fallbackMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+        characterModel = new THREE.Mesh(fallbackGeometry, fallbackMaterial);
+        characterModel.scale.set(fallbackSphereScale, fallbackSphereScale, fallbackSphereScale);
+
+        // Position fallback sphere on the floor
+        basePosition.set(0, fallbackSphereRadius * fallbackSphereScale, 0);
+        characterModel.position.copy(basePosition);
+
+        characterModel.castShadow = true;
+        characterModel.receiveShadow = true;
+        scene.add(characterModel);
+        console.log("Added fallback red sphere for player character.");
+    }
+);
+
+// --- Decorative Elements (Existing Cat Model) ---
+const decorativeElements = new THREE.Group();
+scene.add(decorativeElements);
+
+//Random element Element 2: A torus knot
+const torusKnotGeometry = new THREE.TorusKnotGeometry(1.2, 0.35, 120, 18);
+const torusKnotMaterial = new THREE.MeshStandardMaterial({
+    color: 0xff4500, roughness: 0.1, metalness: 0.8, emissive: 0x330000
+});
+const torusKnot = new THREE.Mesh(torusKnotGeometry, torusKnotMaterial);
+torusKnot.position.set(-9, 1.2 + 0.35 + 1, 5);
+torusKnot.castShadow = true; torusKnot.receiveShadow = true;
+decorativeElements.add(torusKnot);
+
+// Element 3: Simple "Crystal" Structures
+function createCrystal(x, y, z, color, height, radius) {
+    const crystalGeo = new THREE.ConeGeometry(radius, height, 8);
+    const crystalMat = new THREE.MeshStandardMaterial({
+        color: color, roughness: 0.1, metalness: 0.3,
+        transparent: true, opacity: 0.85, emissive: new THREE.Color(color).multiplyScalar(0.2)
+    });
+    const crystal = new THREE.Mesh(crystalGeo, crystalMat);
+    crystal.position.set(x, y + height / 2, z);
+    crystal.castShadow = true; crystal.receiveShadow = true;
+    decorativeElements.add(crystal);
+}
+createCrystal(12, 0, 10, 0xAFEEEE, 4, 1.5);
+createCrystal(15, 0, 8, 0xFFC0CB, 3, 1);
+createCrystal(-13, 0, -9, 0xDA70D6, 5, 2);
+
+// --- Controls & Animation ---
 const keysPressed = {};
-window.addEventListener('keydown', (e) => keysPressed[e.key.toLowerCase()] = true);
-window.addEventListener('keyup', (e) => keysPressed[e.key.toLowerCase()] = false);
+window.addEventListener('keydown', (e) => keysPressed[e.key.toLowerCase()] = true, false);
+window.addEventListener('keyup', (e) => keysPressed[e.key.toLowerCase()] = false, false);
 
-// Clock
 const clock = new THREE.Clock();
 
-// Hover character visually
-function hoverCharacter(model, basePosition) {
-  const elapsed = clock.getElapsedTime();
-  if (model) {
-    const hoverOffset = Math.sin(elapsed * 2) * 0.5;
-    model.position.set(basePosition.x, basePosition.y + hoverOffset, basePosition.z);
-  }
+function hoverCharacter(model, charBasePos) {
+    const elapsed = clock.getElapsedTime();
+    if (model) { // Check if model is loaded
+        const hoverAmplitude = 0.20;
+        const hoverSpeed = 3.5;
+        const hoverOffset = Math.sin(elapsed * hoverSpeed) * hoverAmplitude;
+        model.position.y = charBasePos.y + hoverOffset; // Hover relative to basePosition.y
+    }
 }
 
-// Move base position using WASD
-function moveCharacter(basePos) {
-  const speed = 0.0085;
-  if (keysPressed['w']) basePos.z += speed;
-  if (keysPressed['s']) basePos.z -= speed;
-  if (keysPressed['a']) basePos.x += speed;
-  if (keysPressed['d']) basePos.x -= speed;
+function moveCharacter(charBasePos, delta) {
+    let speed = 8.0;
+    if (keysPressed['shift']) speed = 15;
+
+    const moveDistance = speed * delta;
+    const moveInputVector = new THREE.Vector3();
+    if (keysPressed['w'] || keysPressed['arrowup']) moveInputVector.z += 1;
+    if (keysPressed['s'] || keysPressed['arrowdown']) moveInputVector.z -= 1;
+    if (keysPressed['a'] || keysPressed['arrowleft']) moveInputVector.x += 1;
+    if (keysPressed['d'] || keysPressed['arrowright']) moveInputVector.x -= 1;
+
+    if (moveInputVector.lengthSq() > 0) {
+        const cameraForward = new THREE.Vector3();
+        camera.getWorldDirection(cameraForward);
+        cameraForward.y = 0; cameraForward.normalize();
+
+        const cameraRight = new THREE.Vector3().crossVectors(camera.up, cameraForward).normalize();
+
+        const moveDirection = new THREE.Vector3();
+        moveDirection.add(cameraForward.multiplyScalar(moveInputVector.z));
+        moveDirection.add(cameraRight.multiplyScalar(moveInputVector.x));
+        moveDirection.normalize();
+
+        const actualMove = moveDirection.multiplyScalar(moveDistance);
+        charBasePos.add(actualMove);
+
+        if (characterModel) { // Check if characterModel is loaded
+            characterModel.position.x = charBasePos.x;
+            characterModel.position.z = charBasePos.z;
+            // Y position is handled by hoverCharacter
+
+            if (actualMove.lengthSq() > 0.0001) {
+                const lookAtTarget = characterModel.position.clone().add(actualMove.setY(0));
+                characterModel.lookAt(lookAtTarget);
+            }
+        }
+    }
+    directionalLight.target.position.copy(charBasePos);
 }
 
-// Camera follows base position
-function updateCameraFollow(basePos) {
-  const offset = new THREE.Vector3(0, 8, -15);
-  const desiredPosition = basePos.clone().add(offset);
-  camera.position.lerp(desiredPosition, 0.1);
-  camera.lookAt(basePos);
+function updateCameraFollow(charBasePos) {
+    const offset = new THREE.Vector3(0, 12, 22);
+    const desiredPosition = charBasePos.clone().add(offset);
+    const lerpFactor = 0.04;
+    camera.position.lerp(desiredPosition, lerpFactor);
+
+    let lookAtY = charBasePos.y;
+    if (characterModel && characterModel.scale) { // If model is loaded, use its scale
+        // Approximate center based on scale; assumes model is ~1 unit tall before scaling
+        lookAtY += characterModel.scale.y * 0.5;
+    } else { // Fallback if model not loaded yet
+        lookAtY += 0.75; // Generic offset (half of a 1.5 scaled unit)
+    }
+    camera.lookAt(charBasePos.clone().setY(lookAtY));
 }
 
-// Animate
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+}, false);
+
 function animate() {
-  requestAnimationFrame(animate);
-  moveCharacter(basePosition);
-  hoverCharacter(catModel, basePosition);
-  updateCameraFollow(basePosition);
-  renderer.render(scene, camera);
-}
+    // console.log(keysPressed);
+    requestAnimationFrame(animate);
+    const delta = clock.getDelta();
 
-renderer.setAnimationLoop(animate);
+    moveCharacter(basePosition, delta);
+    hoverCharacter(characterModel, basePosition); // Pass characterModel (which might be null initially)
+    updateCameraFollow(basePosition);
+
+    torusKnot.rotation.x += 0.008 * (60 * delta);
+    torusKnot.rotation.y += 0.004 * (60 * delta);
+
+    // Optional: Animate decorative cat if loaded
+    // if (decorativeCatModel) {
+    //     decorativeCatModel.rotation.y += 0.005 * (60 * delta);
+    // }
+
+    renderer.render(scene, camera);
+}
+animate();
