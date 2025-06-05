@@ -2,13 +2,17 @@
 
 from flask import Flask ,request, jsonify 
 from openai import OpenAI
+from flask_cors import CORS # Import CORS
+import os 
 
+app = Flask(__name__)
+CORS(app)
+
+# Shapes_APIKEY = os.getenv("SHAPES_API_KEY") 
 shapes_client = OpenAI(
-    api_key="api key here",
+    api_key=Shapes_APIKEY,
     base_url="https://api.shapes.inc/v1/",
 )
-
-app=Flask(__name__)
 
 @app.route('/chat',methods=['POST'])
 def chat():
@@ -21,7 +25,7 @@ def chat():
         {"role": "user", "content": f"{user_message}"}
     ])
 
-    reply = f"bot response: {response}"
+    reply = response.choices[0].message.content
 
     return jsonify({"reply": reply})
 

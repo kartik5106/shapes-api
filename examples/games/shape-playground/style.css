@@ -1,0 +1,12 @@
+canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+}
+
+main {
+  /* ... other styles ... */
+  z-index: 99; /* Ensures main content is on top of the canvas */
+  position: absolute; /* Allows it to be layered correctly */
+  /* ... other styles ... */
+}
